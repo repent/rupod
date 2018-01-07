@@ -4,13 +4,14 @@ require 'optparse'
 require 'ostruct'
 require 'pry'
 require 'logger'
+require 'awesome_print'
 
 require 'rss'
+require 'fileutils'
 
 options = OpenStruct.new(
   verbose: false,
   dry: false,
-  #home: '/home/slack',
 )
 
 #raise "$HOME not set" unless ENV['HOME']
@@ -68,6 +69,7 @@ log.debug("Started #{$0}")
 
 # TODO: ENSURE ALL FILES AND FOLDERS ARE CREATED ALREADY
 
+FileUtils.touch options.saved_podcasts unless File.exist? options.saved_podcasts
 saved_podcasts = File.readlines(options.saved_podcasts).collect { |e| e.chomp }
 
 File.foreach('/home/slack/.rupod/podcasts.txt') do |line|
@@ -80,8 +82,11 @@ File.foreach('/home/slack/.rupod/podcasts.txt') do |line|
       log.info "Skipping #{item.link}, it appears to be already downloaded (TODO: force instructions)"
       next
     end
-    # TODO: insert series directory, create folder
-    filename = "#{options.podcast_dir}/#{item.title}#{File.extname item.link}"
+    #binding.pry
+    #title ||= /(.*)(\s+Episode\s+)\d+/
+    dir = "#{options.podcast_dir}/#{title}"
+    FileUtils.mkpath dir
+    filename = "#{dir}/#{item.title}#{File.extname item.link}"
     # TODO: CHECK IF THIS FILE ALREADY EXISTS, DO SOMETHING SENSIBLE
     command = "wget #{item.link} -o '#{options.rupod_dir}/wget.log' -O '#{filename}'"
     log.info "Trying #{command}"
