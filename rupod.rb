@@ -17,7 +17,7 @@ options = OpenStruct.new(
 #raise "$HOME not set" unless ENV['HOME']
 options.home = ENV['HOME'] || '/home/slack'
 options.rupod_dir = "#{options.home}/.rupod"
-options.podcast_list =  "#{options.rupod_dir}/podcasts.txt",
+options.podcast_list = "#{options.rupod_dir}/podcasts.txt"
 options.podcast_dir = "#{options.home}/podcasts"
 options.saved_podcasts = "#{options.rupod_dir}/saved.list"
 
@@ -63,13 +63,26 @@ OptionParser.new do |opts|
   end
 end
 
+#class Podcast
+#  def initialize(item)
+#    @url
+#    @feed_type
+#  end
+#end
+
 options.verbose = true if options.dry
 
 log.debug("Started #{$0}")
 
-# TODO: ENSURE ALL FILES AND FOLDERS ARE CREATED ALREADY
+# Ensure all files and folders exist
+[options.rupod_dir, options.podcast_dir].each do |dir|
+  FileUtils.mkpath dir unless File.exist? dir
+end
+[options.podcast_list, options.saved_podcasts].each do |f|
+  FiluUtils.touch f unless File.exist? f
+end
 
-FileUtils.touch options.saved_podcasts unless File.exist? options.saved_podcasts
+#FileUtils.touch options.saved_podcasts unless File.exist? options.saved_podcasts
 saved_podcasts = File.readlines(options.saved_podcasts).collect { |e| e.chomp }
 
 File.foreach('/home/slack/.rupod/podcasts.txt') do |line|
@@ -78,23 +91,41 @@ File.foreach('/home/slack/.rupod/podcasts.txt') do |line|
   rss = RSS::Parser.parse(feed_url, false)
   log.info "Feed type: #{rss.feed_type}"
   rss.items.each do |item|
-    if saved_podcasts.include? item.link
+    url = item.link || item.enclosure.url
+    begin
+      url.chomp!
+    raise
+      puts "Could not extract url from feed for #{item.title}"
+      binding.pry
+    end
+    if saved_podcasts.include? url
       log.info "Skipping #{item.link}, it appears to be already downloaded (TODO: force instructions)"
       next
     end
-    #binding.pry
     #title ||= /(.*)(\s+Episode\s+)\d+/
     dir = "#{options.podcast_dir}/#{title}"
     FileUtils.mkpath dir
-    filename = "#{dir}/#{item.title}#{File.extname item.link}"
+    binding.pry unless url
+    begin
+      filename = "#{dir}/#{item.title}#{File.extname url}"
+    rescue
+      # TODO: rupod.rb:89:in `extname': no implicit conversion of nil into String (TypeError)
+      raise
+    end
     # TODO: CHECK IF THIS FILE ALREADY EXISTS, DO SOMETHING SENSIBLE
-    command = "wget #{item.link} -o '#{options.rupod_dir}/wget.log' -O '#{filename}'"
+    if File.exist? filename
+      log.warn "Default output file name already exists -- may indicate that we are erroneously re-downloading a podcast [#{filename}]"
+      n = 1
+      n += 1 while File.exist? "#{File.basename filename}-#{n}#{File.extname filename}"
+      filename = "#{File.basename filename}-#{n}#{File.extname filename}"
+    end
+    command = "wget #{url} --no-verbose -a '#{options.rupod_dir}/wget.log' -O '#{filename}'"
     log.info "Trying #{command}"
     if system(command)
       # Success
       log.info "#{item.title} recording complete (saved to #{filename})"
       puts "#{item.title} downloaded"
-      `echo #{item.link} >> #{options.saved_podcasts}`
+      `echo #{url} >> #{options.saved_podcasts}`
     else
       # Failure
       log.warn "#{item.title} recording failed!  Skipping..." # Retries?
