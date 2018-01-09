@@ -91,7 +91,7 @@ end
 saved_podcasts = File.readlines(options.saved_podcasts).collect { |e| e.chomp }
 
 File.foreach('/home/slack/.rupod/podcasts.txt') do |line|
-  next unless line.chomp!.length > 0 or line =~ /^\s?\#/
+  next if line =~ /^\s?\#/ or line.chomp!.length == 0
   feed_url, title = line.split(' ', 2)
   rss = RSS::Parser.parse(feed_url, false)
   log.info "Feed type: #{rss.feed_type}"
