@@ -5,6 +5,7 @@ require 'ostruct'
 require 'pry'
 require 'logger'
 require 'awesome_print'
+#require 'pathname'
 
 require 'rss'
 require 'fileutils'
@@ -63,6 +64,10 @@ OptionParser.new do |opts|
   end
 end
 
+def escape(string)
+  string.gsub "'", "\\'"
+end
+
 #class Podcast
 #  def initialize(item)
 #    @url
@@ -86,7 +91,7 @@ end
 saved_podcasts = File.readlines(options.saved_podcasts).collect { |e| e.chomp }
 
 File.foreach('/home/slack/.rupod/podcasts.txt') do |line|
-  next unless line.chomp!.length > 0
+  next unless line.chomp!.length > 0 or line =~ /^\s?\#/
   feed_url, title = line.split(' ', 2)
   rss = RSS::Parser.parse(feed_url, false)
   log.info "Feed type: #{rss.feed_type}"
@@ -94,12 +99,12 @@ File.foreach('/home/slack/.rupod/podcasts.txt') do |line|
     url = item.link || item.enclosure.url
     begin
       url.chomp!
-    raise
+    rescue
       puts "Could not extract url from feed for #{item.title}"
       binding.pry
     end
     if saved_podcasts.include? url
-      log.info "Skipping #{item.link}, it appears to be already downloaded (TODO: force instructions)"
+      log.info "Skipping #{url}, it appears to be already downloaded (TODO: force instructions)"
       next
     end
     #title ||= /(.*)(\s+Episode\s+)\d+/
@@ -107,19 +112,19 @@ File.foreach('/home/slack/.rupod/podcasts.txt') do |line|
     FileUtils.mkpath dir
     binding.pry unless url
     begin
-      filename = "#{dir}/#{item.title}#{File.extname url}"
+      filename = "#{dir}/#{item.title.gsub(%Q['],'')}#{File.extname url}"
     rescue
       # TODO: rupod.rb:89:in `extname': no implicit conversion of nil into String (TypeError)
       raise
     end
-    # TODO: CHECK IF THIS FILE ALREADY EXISTS, DO SOMETHING SENSIBLE
+    # Check if file already exists, if so change filename and warn that this smells fishy
     if File.exist? filename
       log.warn "Default output file name already exists -- may indicate that we are erroneously re-downloading a podcast [#{filename}]"
       n = 1
-      n += 1 while File.exist? "#{File.basename filename}-#{n}#{File.extname filename}"
-      filename = "#{File.basename filename}-#{n}#{File.extname filename}"
+      n += 1 while File.exist? "#{File.join(File.dirname(filename), File.basename(filename))}-#{n}#{File.extname filename}"
+      filename = "#{File.join(File.dirname(filename), File.basename(filename))}-#{n}#{File.extname filename}"
     end
-    command = "wget #{url} --no-verbose -a '#{options.rupod_dir}/wget.log' -O '#{filename}'"
+    command = "wget #{url} --no-verbose -a '#{options.rupod_dir}/wget.log' -O '#{escape(filename)}'"
     log.info "Trying #{command}"
     if system(command)
       # Success
